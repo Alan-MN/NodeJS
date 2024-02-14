@@ -2,6 +2,8 @@ import { FastifyInstance } from "fastify"
 import {z} from 'zod'
 import { prisma } from "../../lib/prisma"
 import { randomUUID } from "crypto"
+import { redis } from "../../lib/redis"
+import { voting } from "../../utils/votinv-pub-sub"
 
 export  async function voteOnPoll(app: FastifyInstance){
     app.post('/get-poll/:pollId/vote', async (request, reply )=> {
@@ -30,6 +32,13 @@ export  async function voteOnPoll(app: FastifyInstance){
 
             if (userPreviousVoteOnPoll && userPreviousVoteOnPoll.pollOptionId !== pollOptionId){
                 //apaga voto
+                const votes =await redis.zincrby(pollId, -1,userPreviousVoteOnPoll.pollOptionId)
+
+                voting.publish(pollId,{
+                    pollOptionId: userPreviousVoteOnPoll.pollOptionId,
+                    votes: Number(votes)
+                })
+
                 await prisma.vote.delete({
                     where:{
                         id:userPreviousVoteOnPoll.id
@@ -59,6 +68,13 @@ export  async function voteOnPoll(app: FastifyInstance){
                 pollId,
                 pollOptionId
             }
+        })
+
+
+        const votes = await redis.zincrby(pollId, 1,pollOptionId)
+        voting.publish(pollId,{
+            pollOptionId,
+            votes: Number(votes)
         })
 
 
